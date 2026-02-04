@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aesthetic Image Music Player</title>
+
+<style>
+* { box-sizing: border-box; font-family: Inter, Arial, sans-serif; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 50% -10%, #1b1f2a, #0f1115);
+  color: #fff;
+}
+
+header {
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(15,17,21,.8);
+  backdrop-filter: blur(10px);
+}
+
+button {
+  background: #1f6aff;
+  border: none;
+  color: white;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+button.secondary { background: #2a2f3f; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 18px;
+  padding: 18px;
+}
+
+.tab {
+  background: rgba(24,27,34,.9);
+  border-radius: 20px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.tab img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+}
+
+.title {
+  text-align: center;
+  padding: 8px;
+  font-size: 13px;
+}
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.7);
+}
+
+.viewer-card {
+  max-width: 90%;
+  width: 400px;
+}
+
+.viewer img {
+  width: 100%;
+  border-radius: 20px;
+}
+
+.viewer-title {
+  text-align: center;
+  margin: 10px 0;
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.controls button.active {
+  background: #1db954;
+  color: black;
+}
+
+.progress-container {
+  width: 100%;
+  height: 6px;
+  background: #333;
+  border-radius: 10px;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.progress {
+  height: 100%;
+  width: 0%;
+  background: #1db954;
+}
+
+#time {
+  font-size: 12px;
+  opacity: .7;
+  text-align: center;
+}
+
+#queueList {
+  list-style: none;
+  padding: 0;
+  margin-top: 10px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+#queueList li {
+  padding: 6px;
+  cursor: pointer;
+  opacity: .6;
+}
+
+#queueList li.current {
+  opacity: 1;
+  color: #1db954;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.6);
+}
+
+.modal-card {
+  background: #181b22;
+  padding: 18px;
+  border-radius: 20px;
+  width: 320px;
+  display: grid;
+  gap: 12px;
+}
+
+.modal-card input {
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>🎧 Minhas músicas</h1>
+  <div>
+    <button id="add">+ Adicionar</button>
+    <button class="secondary" id="clear">Limpar</button>
+  </div>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<div class="viewer" id="viewer">
+  <div class="viewer-card">
+    <button class="secondary" id="close">Fechar</button>
+    <img id="viewerImg">
+    <div class="viewer-title" id="viewerTitle"></div>
+
+    <audio id="player"></audio>
+
+    <div class="controls">
+      <button onclick="prevMusic()">⏮️</button>
+      <button id="shuffleBtn" onclick="toggleShuffle()">🔀</button>
+      <button id="repeatBtn" onclick="toggleRepeat()">🔁</button>
+      <button onclick="nextMusic()">⏭️</button>
+    </div>
+
+    <div class="progress-container" onclick="setProgress(event)">
+      <div class="progress"></div>
+    </div>
+    <div id="time">0:00 / 0:00</div>
+
+    <ul id="queueList"></ul>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-card">
+    <input id="titleInput" placeholder="Nome da música">
+    <input type="file" id="imgInput" accept="image/*">
+    <input type="file" id="audInput" accept="audio/*">
+    <button id="save">Adicionar</button>
+    <button class="secondary" id="cancel">Cancelar</button>
+  </div>
+</div>
+
+<script>
+let tabs = [];
+let queue = [];
+let currentIndex = 0;
+let shuffle = false;
+let repeat = false;
+
+const grid = document.getElementById('grid');
+const viewer = document.getElementById('viewer');
+const viewerImg = document.getElementById('viewerImg');
+const viewerTitle = document.getElementById('viewerTitle');
+const player = document.getElementById('player');
+const progress = document.querySelector('.progress');
+const timeEl = document.getElementById('time');
+
+function render() {
+  grid.innerHTML = '';
+  tabs.forEach((tab, i) => {
+    const el = document.createElement('div');
+    el.className = 'tab';
+    el.innerHTML = `<img src="${tab.image}"><div class="title">${tab.title}</div>`;
+    el.onclick = () => openViewer(i);
+    grid.appendChild(el);
+  });
+}
+
+function openViewer(index) {
+  queue = tabs;
+  currentIndex = index;
+  viewer.style.display = 'flex';
+  playCurrent();
+}
+
+function playCurrent() {
+  const t = queue[currentIndex];
+  viewerImg.src = t.image;
+  viewerTitle.textContent = t.title;
+  player.src = t.audio;
+  player.play();
+  renderQueue();
+}
+
+function nextMusic() {
+  if (shuffle) {
+    currentIndex = Math.floor(Math.random() * queue.length);
+  } else {
+    currentIndex++;
+    if (currentIndex >= queue.length) {
+      if (repeat) currentIndex = 0;
+      else return;
+    }
+  }
+  playCurrent();
+}
+
+function prevMusic() {
+  currentIndex = Math.max(0, currentIndex - 1);
+  playCurrent();
+}
+
+function toggleShuffle() {
+  shuffle = !shuffle;
+  document.getElementById('shuffleBtn').classList.toggle('active', shuffle);
+}
+
+function toggleRepeat() {
+  repeat = !repeat;
+  document.getElementById('repeatBtn').classList.toggle('active', repeat);
+}
+
+player.addEventListener('ended', nextMusic);
+
+player.addEventListener('timeupdate', () => {
+  progress.style.width = (player.currentTime / player.duration) * 100 + '%';
+  timeEl.textContent = format(player.currentTime) + ' / ' + format(player.duration);
+});
+
+function setProgress(e) {
+  player.currentTime = (e.offsetX / e.target.clientWidth) * player.duration;
+}
+
+function format(t) {
+  if (!t) return '0:00';
+  return Math.floor(t/60) + ':' + String(Math.floor(t%60)).padStart(2,'0');
+}
+
+function renderQueue() {
+  const q = document.getElementById('queueList');
+  q.innerHTML = '';
+  queue.forEach((t,i)=>{
+    const li = document.createElement('li');
+    li.textContent = t.title;
+    if (i === currentIndex) li.classList.add('current');
+    li.onclick = ()=>{ currentIndex=i; playCurrent(); };
+    q.appendChild(li);
+  });
+}
+
+document.getElementById('add').onclick = ()=> modal.style.display='flex';
+document.getElementById('cancel').onclick = ()=> modal.style.display='none';
+document.getElementById('close').onclick = ()=> { viewer.style.display='none'; player.pause(); };
+document.getElementById('clear').onclick = ()=>{ tabs=[]; render(); };
+
+document.getElementById('save').onclick = ()=>{
+  const img = imgInput.files[0];
+  const aud = audInput.files[0];
+  if (!img || !aud) return alert('Selecione tudo');
+
+  tabs.push({
+    title: titleInput.value || 'Sem nome',
+    image: URL.createObjectURL(img),
+    audio: URL.createObjectURL(aud)
+  });
+
+  modal.style.display='none';
+  render();
+};
+
+render();
+</script>
+
+</body>
+</html>
